@@ -11,22 +11,26 @@ import SubmitButton from "../SubmitButton"
 import { useState } from "react"
 import { getAppointmentSchema } from "@/lib/validation"
 import { useRouter } from "next/navigation"
-import { createUser } from "@/lib/actions/patient.actions"
 import { FormFieldType } from "./PatientForm"
 import { SelectItem } from "../ui/select"
 import Image from "next/image"
 import { Doctors } from "@/constants"
-import { CreateAppointment } from "@/lib/actions/appointment.actions"
+import { CreateAppointment, updateAppointment } from "@/lib/actions/appointment.actions"
+import { Appointment } from "@/types/appwrite.types"
 
 /* accepting props in this component and assigning their types */
- const AppointmentForm = ({
+const AppointmentForm = ({
     userId,
     patientId,
-    type
+    type,
+    appointment,
+    setOpen
     }: {
         userId: string,
         patientId: string,
-        type: "create" | "cancel" | "schedule"
+        type: "create" | "cancel" | "schedule",
+        appointment?: Appointment,
+        setOpen: (open: boolean) => void;
     }
 ) => {
   const router = useRouter();
@@ -56,11 +60,11 @@ import { CreateAppointment } from "@/lib/actions/appointment.actions"
   const form = useForm<z.infer<typeof AppointmentFormValidation>>({
     resolver: zodResolver(AppointmentFormValidation),
     defaultValues: {
-      primaryPhysician: "",
-      schedule: new Date(),
-      reason: "",
-      note: "",
-      cancellationReason: ""
+      primaryPhysician: appointment?.primaryPhysician || "",
+      schedule: appointment ? new Date(appointment.schedule) : new Date(Date.now()),
+      reason: appointment?.reason || "",
+      note: appointment?.note || "",
+      cancellationReason: appointment?.cancellationReason || ""
     },
   })
 
@@ -81,7 +85,7 @@ import { CreateAppointment } from "@/lib/actions/appointment.actions"
             break;
     }
 
-    console.log("before type:",type);
+    // console.log("before type:",type);
 
     try {
         if(type === 'create' && patientId) {
@@ -99,11 +103,30 @@ import { CreateAppointment } from "@/lib/actions/appointment.actions"
 
             const appointment = await CreateAppointment(appointmentData);
 
-            console.log("appointment created,",appointment);
+            // console.log("appointment created,",appointment);
 
             if(appointment) {
+                form.reset(); //reset form
+                router.push(`/patients/${userId}/new-appointment/success?appointmentId=${appointment.$id}`)
+            }
+        } else {
+            const appointmentToUpdate = {
+                userId,
+                appointmentId: appointment?.$id!,
+                type,
+                appointment: {
+                    primaryPhysician: values?.primaryPhysician,
+                    schedule: new Date(values?.schedule),
+                    status: status as Status,
+                    cancellationReason: values?.cancellationReason,
+                }
+            }
+
+            const updatedAppointment = await updateAppointment(appointmentToUpdate);
+
+            if(updatedAppointment) {
+                setOpen && setOpen(false);
                 form.reset();
-                router.push(`/patients/${userId}/new-appointment/success?appointmentId=${appointment.id}`)
             }
         }
 
@@ -117,10 +140,12 @@ import { CreateAppointment } from "@/lib/actions/appointment.actions"
     // This component wraps the form fields and applies the form state (form) to the form elements, enabling integration with react-hook-form.
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 flex-1">
+        { type === 'create' &&
         <section className="mb-12 space-y-4">
-            <h1 className="header">Hey there! 👋</h1>
+            <h1 className="header">New Appointment</h1>
             <p className="text-dark-700">Request a new appointment in 10 seconds</p>
         </section>
+        }
 
         {type !== "cancel" && (
             <>
@@ -193,6 +218,5 @@ import { CreateAppointment } from "@/lib/actions/appointment.actions"
 
   )
 }
-
 
 export default AppointmentForm
